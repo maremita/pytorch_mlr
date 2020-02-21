@@ -17,9 +17,8 @@ class linear_layer(nn.Module):
 
     def __init__(self, n_classes, n_features, bias):
         super(linear_layer, self).__init__()
-        
 
-        # to check dtype dependently to imput data
+        # to check dtype dependently to input data
         self.linear = nn.Linear(n_features, n_classes, bias=bias).double()
 
         with torch.no_grad():
@@ -33,14 +32,14 @@ class linear_layer(nn.Module):
 
 class MLR(BaseEstimator, ClassifierMixin):
 
-    def __init__(self, penalty='l2', tol=1e-4, C=1.0, learning_rate=0.001, 
+    def __init__(self, penalty='l2', tol=1e-4, alpha=1.0, learning_rate=0.001, 
             fit_intercept=True, intercept_scaling=1, class_weight=None, 
             random_state=None, solver='sgd', max_iter=100, n_jobs=0, 
             batch_size=1, l1_ratio=None, device='cpu', verbose=0):
 
         self.penalty = penalty
         self.tol = tol
-        self.C = C
+        self.alpha = alpha
         self.learning_rate=learning_rate
         self.fit_intercept = fit_intercept
         self.intercept_scaling = intercept_scaling
@@ -92,9 +91,20 @@ class MLR(BaseEstimator, ClassifierMixin):
                 weight=self.class_weight) 
 
         # Define optimizer
-        self.optimizer = optim.SGD(self.model.parameters(), 
-                lr=self.learning_rate)
- 
+        if self.solver == "sgd":
+            self.optimizer = optim.SGD(self.model.parameters(), 
+                    lr=self.learning_rate)
+        else:
+            raise NotImplementedError("Only SGD solver is supported")
+
+        # check regularization 
+        reg_types = ['none', 'l1', 'l2', 'elasticnet'] 
+        
+        if self.penalty not in reg_types:
+            raise ValueError("Regularization type should be one of these "
+                    "values {}; and got {}".format(
+                        ", ".join(reg_types), reg_type))
+
         # train the model
         self._fit(X, encoded_y)
  
@@ -121,8 +131,13 @@ class MLR(BaseEstimator, ClassifierMixin):
                 # Run forward pass
                 logits = self.model(X_batch)
 
-                # compute the loss and gradients
+                # compute the loss
                 loss = self.cross_entropy_loss(logits, y_batch)
+                
+                # regularization
+                #if 
+
+                # compute gradients
                 loss.backward()
 
                 # update parameters
@@ -130,6 +145,7 @@ class MLR(BaseEstimator, ClassifierMixin):
 
             # Check if the stopping criteria is reached
             with torch.no_grad():
+                #print(loss.item())
                 current_w = self.model.linear.weight
  
                 max_weight = torch.max(self.model.linear.weight.data)
@@ -153,6 +169,32 @@ class MLR(BaseEstimator, ClassifierMixin):
             print("max_iter reached")
         
         self.n_iter_ = n_iter
+
+    def _regularize(self):
+        """
+        Compute regularized cost
+
+        Returns
+        -------
+        reg_loss : 
+
+        """
+
+        reg_lambda = self.alpha
+        reg_rho = self.l1_ratio 
+        w = self.model.linear.weight
+ 
+        if self.penalty == 'l1':
+            l = reg_lambda * w.abs().sum()
+        
+        elif self.penalty == 'l2':
+            l = reg_lambda * 0.5 * w.pow(2).sum()
+
+        elif self.penalty == 'elasticnet':
+            l = reg_lambda * (((1 - reg_rho) * 0.5 * w.pow(2).sum())
+                    + (reg_rho * w.abs().sum()))
+
+        return l
 
     def decision_function(self, X):
         """
@@ -188,15 +230,18 @@ class MLR(BaseEstimator, ClassifierMixin):
     def predict(self, X):
         """
         Predict class labels for samples in X.
+        
         Parameters
         ----------
         X : array_like or sparse matrix, shape (n_samples, n_features)
             Samples.
+        
         Returns
         -------
         C : array, shape [n_samples]
             Predicted class label per sample.
         """
+
         logits = self.decision_function(X)
         _, indices = torch.max(logits.data, 1)
 
