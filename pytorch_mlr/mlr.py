@@ -32,14 +32,15 @@ class linear_layer(nn.Module):
 
 class MLR(BaseEstimator, ClassifierMixin):
 
-    def __init__(self, penalty='l2', tol=1e-4, alpha=1.0, learning_rate=0.001, 
-            fit_intercept=True, intercept_scaling=1, class_weight=None, 
-            random_state=None, solver='sgd', max_iter=100, n_jobs=0, 
-            batch_size=1, l1_ratio=None, device='cpu', verbose=0):
+    def __init__(self, penalty='l2', tol=1e-4, alpha=1.0, l1_ratio=0., 
+            learning_rate=0.001, fit_intercept=True, intercept_scaling=1, 
+            class_weight=None, random_state=None, solver='sgd', max_iter=100,
+            n_jobs=0, batch_size=1, device='cpu', verbose=0):
 
         self.penalty = penalty
         self.tol = tol
         self.alpha = alpha
+        self.l1_ratio = l1_ratio
         self.learning_rate=learning_rate
         self.fit_intercept = fit_intercept
         self.intercept_scaling = intercept_scaling
@@ -49,7 +50,6 @@ class MLR(BaseEstimator, ClassifierMixin):
         self.max_iter = max_iter
         self.n_jobs = n_jobs
         self.batch_size = batch_size
-        self.l1_ratio = l1_ratio
         self.device = device
         self.verbose = verbose
 
@@ -82,6 +82,9 @@ class MLR(BaseEstimator, ClassifierMixin):
 
         # Check self.class_weight
         # It has to be a Tensor
+        
+        # Check penalty type
+        self.check_penalty()
 
         # initialize a linear model
         self.model = linear_layer(n_classes, n_features, _bias)
@@ -93,17 +96,12 @@ class MLR(BaseEstimator, ClassifierMixin):
         # Define optimizer
         if self.solver == "sgd":
             self.optimizer = optim.SGD(self.model.parameters(), 
-                    lr=self.learning_rate)
+                    lr=self.learning_rate, weight_decay=1)
         else:
             raise NotImplementedError("Only SGD solver is supported")
-
-        # check regularization 
-        reg_types = ['none', 'l1', 'l2', 'elasticnet'] 
         
-        if self.penalty not in reg_types:
-            raise ValueError("Regularization type should be one of these "
-                    "values {}; and got {}".format(
-                        ", ".join(reg_types), reg_type))
+        # Define regularizer
+        self.regularizer = self._regularizer()
 
         # train the model
         self._fit(X, encoded_y)
@@ -133,15 +131,18 @@ class MLR(BaseEstimator, ClassifierMixin):
 
                 # compute the loss
                 loss = self.cross_entropy_loss(logits, y_batch)
-                
+ 
                 # regularization
-                #if 
+                #loss += self.alpha * self.regularizer()
 
                 # compute gradients
                 loss.backward()
 
                 # update parameters
                 self.optimizer.step()
+
+                # Regularization (in gradient space)
+                self.regularizer()
 
             # Check if the stopping criteria is reached
             with torch.no_grad():
@@ -161,7 +162,8 @@ class MLR(BaseEstimator, ClassifierMixin):
 
                     break
                 elif self.verbose == 2:
-                    print("Epoch {}, change {}".format(epoch+1, max_change/max_weight))
+                    print("Epoch {}, change {}".format(epoch+1,
+                        max_change/max_weight))
 
             n_iter +=1
 
@@ -170,31 +172,91 @@ class MLR(BaseEstimator, ClassifierMixin):
         
         self.n_iter_ = n_iter
 
-    def _regularize(self):
-        """
-        Compute regularized cost
-
-        Returns
-        -------
-        reg_loss : 
-
-        """
-
-        reg_lambda = self.alpha
-        reg_rho = self.l1_ratio 
-        w = self.model.linear.weight
- 
-        if self.penalty == 'l1':
-            l = reg_lambda * w.abs().sum()
+    def check_penalty(self):
+        # check penalty type 
+        penalty_types = ['none', 'l1', 'l2', 'elasticnet'] 
         
+        if self.penalty not in penalty_types:
+            raise ValueError("Regularization type should be one of these "
+                    "values {}; and got {}".format(
+                        ", ".join(penalty_types), reg_type))
+        
+        if self.penalty == 'none':
+            self.penalty_type = 0
+            self.alpha = 0.0
+
+        elif self.penalty == 'l1':
+            self.self.penalty_type = 1
+            self.l1_ratio = 1.0
+
         elif self.penalty == 'l2':
-            l = reg_lambda * 0.5 * w.pow(2).sum()
+            self.penalty_type = 2
+            self.l1_ratio = 0.0
 
         elif self.penalty == 'elasticnet':
-            l = reg_lambda * (((1 - reg_rho) * 0.5 * w.pow(2).sum())
-                    + (reg_rho * w.abs().sum()))
+            self.self.penalty_type = 3
 
-        return l
+        
+        if self.penalty in ["l1", "elasticnet"]:
+            w = self.model.linear.weight.data
+            self.q = torch.zeros_like(w).detach()
+            self.wuq = torch.zeros_like(w).detach()
+            self.u = 0.
+
+    def _regularizer(self):
+
+        if self.penalty_type == 0:
+            return lambda : None
+
+        elif self.penalty_type == 1:
+            return self._l1
+
+        elif self.penalty_type == 2:
+            return self._l2
+
+        elif self.penalty_type == 3:
+            return self._elasticnet
+
+    def _l1(self):
+            w = self.model.linear.weight.data
+            z = w.data.clone().detach()
+            decay_scale = self.learning_rate * self.l1_ratio * self.alpha 
+            self.u += decay_scale
+
+            # w_i > 0
+            self.wuq = w - (self.u + self.q)
+            self.wuq.clamp_(0., np.inf)
+            w.copy_(w.where(w.le(0.), self.wuq))
+
+            # w_i < 0 
+            self.wuq = w + (self.u - self.q)
+            self.wuq.clamp_(-np.inf, 0.)
+            w.copy_(w.where(w.ge(0.), self.wuq))
+
+            # update q
+            self.q += w - z
+
+    def _l2(self):
+            w = self.model.linear.weight.data
+            b = self.model.linear.bias.data
+            lr = self.optimizer.param_groups[0]['lr']
+            decay_scale = lr * (1 - self.l1_ratio) * self.alpha
+            w.add_(-decay_scale, w)
+            b.add_(-decay_scale, b)
+
+    def _elasticnet(self):
+        self._l2()
+        self._l1()
+
+    #def _l1(self):
+    #    return self.model.linear.weight.abs().sum()
+
+    #def _l2(self):
+    #    return 0.5 * self.model.linear.weight.pow(2).sum()
+
+    #def _elasticnet(self):
+    #    w = self.model.linear.weight
+    #    return ((1 - self.l1_ratio) * _l2()) + (self.l1_ratio * _l1())
 
     def decision_function(self, X):
         """
