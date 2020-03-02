@@ -83,11 +83,11 @@ class MLR(BaseEstimator, ClassifierMixin):
         # Check self.class_weight
         # It has to be a Tensor
         
-        # Check penalty type
-        self.check_penalty()
-
         # initialize a linear model
         self.model = linear_layer(n_classes, n_features, _bias)
+
+        # Check penalty type
+        self.check_penalty()
 
         # Define loss function
         self.cross_entropy_loss = nn.CrossEntropyLoss(
@@ -96,7 +96,7 @@ class MLR(BaseEstimator, ClassifierMixin):
         # Define optimizer
         if self.solver == "sgd":
             self.optimizer = optim.SGD(self.model.parameters(), 
-                    lr=self.learning_rate, weight_decay=1)
+                    lr=self.learning_rate, weight_decay=0)
         else:
             raise NotImplementedError("Only SGD solver is supported")
         
@@ -107,7 +107,7 @@ class MLR(BaseEstimator, ClassifierMixin):
         self._fit(X, encoded_y)
  
         self.coef_ = self.model.linear.weight.data.numpy()
-        self.intercept_ = self.model.linear.bias.data.numpy()
+        #self.intercept_ = self.model.linear.bias.data.numpy()
 
         # Return the classifier
         return self
@@ -186,7 +186,7 @@ class MLR(BaseEstimator, ClassifierMixin):
             self.alpha = 0.0
 
         elif self.penalty == 'l1':
-            self.self.penalty_type = 1
+            self.penalty_type = 1
             self.l1_ratio = 1.0
 
         elif self.penalty == 'l2':
@@ -194,8 +194,7 @@ class MLR(BaseEstimator, ClassifierMixin):
             self.l1_ratio = 0.0
 
         elif self.penalty == 'elasticnet':
-            self.self.penalty_type = 3
-
+            self.penalty_type = 3
         
         if self.penalty in ["l1", "elasticnet"]:
             w = self.model.linear.weight.data
@@ -218,45 +217,44 @@ class MLR(BaseEstimator, ClassifierMixin):
             return self._elasticnet
 
     def _l1(self):
-            w = self.model.linear.weight.data
-            z = w.data.clone().detach()
-            decay_scale = self.learning_rate * self.l1_ratio * self.alpha 
-            self.u += decay_scale
+        """
+        self.model.linear.weight.abs().sum()
+        """
+        w = self.model.linear.weight.data
+        z = w.data.clone().detach()
+        lr = self.optimizer.param_groups[0]['lr']
+        decay_scale = lr * self.l1_ratio * self.alpha 
+        self.u += decay_scale
 
-            # w_i > 0
-            self.wuq = w - (self.u + self.q)
-            self.wuq.clamp_(0., np.inf)
-            w.copy_(w.where(w.le(0.), self.wuq))
+        # w_i > 0
+        self.wuq = w - (self.u + self.q)
+        self.wuq.clamp_(0., np.inf)
+        w.copy_(w.where(w.le(0.), self.wuq))
 
-            # w_i < 0 
-            self.wuq = w + (self.u - self.q)
-            self.wuq.clamp_(-np.inf, 0.)
-            w.copy_(w.where(w.ge(0.), self.wuq))
+        # w_i < 0 
+        self.wuq = w + (self.u - self.q)
+        self.wuq.clamp_(-np.inf, 0.)
+        w.copy_(w.where(w.ge(0.), self.wuq))
 
-            # update q
-            self.q += w - z
+        # update q
+        self.q += w - z
 
     def _l2(self):
-            w = self.model.linear.weight.data
-            b = self.model.linear.bias.data
-            lr = self.optimizer.param_groups[0]['lr']
-            decay_scale = lr * (1 - self.l1_ratio) * self.alpha
-            w.add_(-decay_scale, w)
-            b.add_(-decay_scale, b)
+        """
+        self.model.linear.weight.pow(2).sum()
+        """
+        w = self.model.linear.weight.data
+        lr = self.optimizer.param_groups[0]['lr']
+        decay_scale = lr * (1 - self.l1_ratio) * self.alpha
+        w.add_(-decay_scale, w)
 
     def _elasticnet(self):
+        """
+        self.model.linear.weight
+        ((1 - self.l1_ratio) * _l2()) + (self.l1_ratio * _l1())
+        """
         self._l2()
         self._l1()
-
-    #def _l1(self):
-    #    return self.model.linear.weight.abs().sum()
-
-    #def _l2(self):
-    #    return 0.5 * self.model.linear.weight.pow(2).sum()
-
-    #def _elasticnet(self):
-    #    w = self.model.linear.weight
-    #    return ((1 - self.l1_ratio) * _l2()) + (self.l1_ratio * _l1())
 
     def decision_function(self, X):
         """
