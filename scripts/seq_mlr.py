@@ -26,7 +26,8 @@ if __name__ == "__main__":
 
     seq_file = sys.argv[1]
     cls_file = sys.argv[2]
-    
+    device = sys.argv[3]   # cpu or cuda or cuda:0
+
     k=5
 
     ## Get data
@@ -56,7 +57,7 @@ if __name__ == "__main__":
 
     pt_mlr = MLR(max_iter=max_iter, penalty=penalty, verbose=1, alpha=alpha,
             batch_size=1, learning_rate=learning_rate, n_jobs=4, tol=0, 
-            l1_ratio=l1_ratio)
+            l1_ratio=l1_ratio, device=device)
 
     start = time.time()
     pt_mlr.fit(X_train, y_train)
