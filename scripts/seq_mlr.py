@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
-from mlr import MLR
-from bio_seq_reps import seq_collections
-from bio_seq_reps import kmers
+from pytorch_mlr.mlr import MLR
+from pytorch_mlr import seq_collections
+from pytorch_mlr import kmer_collections as kmers
 
 import sys
 from pprint import pprint
@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
     ## Get data
     ###########
-    seq_data = seq_collections.SeqClassCollection((seq_file, cls_file))
+    seq_data = seq_collections.SeqCollection((seq_file, cls_file))
 
     seq_cv_kmers = kmers.SeenKmersCollection(seq_data, k=k, sparse="no")
     X = seq_cv_kmers.data

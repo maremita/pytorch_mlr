@@ -1,4 +1,6 @@
-from mlr import MLR
+#!/usr/bin/env python
+
+from pytorch_mlr.mlr import MLR
 
 from sklearn.datasets import load_iris
 from sklearn.linear_model import SGDClassifier
@@ -20,7 +22,7 @@ y = iris.target
 
 #penalty = 'elasticnet'
 penalty = 'l1'
-alpha = 1/X.shape[0]
+alpha = 0.01 * X.shape[0]
 l1_ratio = 0.5
 max_iter = 1000
 learning_rate = test_sag.get_step_size(X, alpha, True, True)
