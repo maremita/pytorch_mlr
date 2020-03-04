@@ -82,7 +82,7 @@ class MLR(BaseEstimator, ClassifierMixin):
 
         # Check self.class_weight
         # It has to be a Tensor
-        
+ 
         # initialize a linear model
         self.model = linear_layer(n_classes, n_features, _bias)
 
@@ -99,7 +99,10 @@ class MLR(BaseEstimator, ClassifierMixin):
                     lr=self.learning_rate, weight_decay=0)
         else:
             raise NotImplementedError("Only SGD solver is supported")
-        
+
+        # scale alpha by number of samples
+        self.alpha /= n_samples
+
         # Define regularizer
         self.regularizer = self._regularizer()
 
@@ -117,7 +120,7 @@ class MLR(BaseEstimator, ClassifierMixin):
 
         X_y = utils_data.TensorDataset(X, y)
         X_y_loader = utils_data.DataLoader(X_y, batch_size=self.batch_size,
-                shuffle=False, num_workers=self.n_jobs)
+                shuffle=True, num_workers=self.n_jobs)
 
         previous_w = torch.zeros(self.model.linear.weight.shape).detach()
 
