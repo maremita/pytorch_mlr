@@ -56,6 +56,9 @@ class MLR(BaseEstimator, ClassifierMixin):
     def fit(self, X, y):
 
         self.device_ = torch.device(self.device)
+ 
+        if self.device_.type == "cuda":
+            self.n_jobs = 0
 
         # Check that X and y have correct shape
         X, y = check_X_y(X, y)
@@ -84,7 +87,8 @@ class MLR(BaseEstimator, ClassifierMixin):
         # It has to be a Tensor
  
         # initialize a linear model
-        self.model = linear_layer(n_classes, n_features, _bias)
+        self.model = linear_layer(n_classes, n_features, _bias).to(
+                self.device_)
 
         # Check penalty type
         self.check_penalty()
@@ -109,8 +113,8 @@ class MLR(BaseEstimator, ClassifierMixin):
         # train the model
         self._fit(X, encoded_y)
  
-        self.coef_ = self.model.linear.weight.data.numpy()
-        #self.intercept_ = self.model.linear.bias.data.numpy()
+        self.coef_ = self.model.linear.weight.data.cpu().numpy()
+        self.intercept_ = self.model.linear.bias.data.cpu().numpy()
 
         # Return the classifier
         return self
@@ -122,7 +126,8 @@ class MLR(BaseEstimator, ClassifierMixin):
         X_y_loader = utils_data.DataLoader(X_y, batch_size=self.batch_size,
                 shuffle=True, num_workers=self.n_jobs)
 
-        previous_w = torch.zeros(self.model.linear.weight.shape).detach()
+        previous_w = torch.zeros(
+                self.model.linear.weight.shape).to(self.device_).detach()
 
         for epoch in range(self.max_iter):
             for batch_ind, (X_batch, y_batch) in enumerate(X_y_loader):
@@ -201,8 +206,8 @@ class MLR(BaseEstimator, ClassifierMixin):
         
         if self.penalty in ["l1", "elasticnet"]:
             w = self.model.linear.weight.data
-            self.q = torch.zeros_like(w).detach()
-            self.wuq = torch.zeros_like(w).detach()
+            self.q = torch.zeros_like(w).to(self.device_).detach()
+            self.wuq = torch.zeros_like(w).to(self.device_).detach()
             self.u = 0.
 
     def _regularizer(self):
@@ -224,7 +229,7 @@ class MLR(BaseEstimator, ClassifierMixin):
         self.model.linear.weight.abs().sum()
         """
         w = self.model.linear.weight.data
-        z = w.data.clone().detach()
+        z = w.data.clone().to(self.device_).detach()
         lr = self.optimizer.param_groups[0]['lr']
         decay_scale = lr * self.l1_ratio * self.alpha 
         self.u += decay_scale
@@ -277,7 +282,7 @@ class MLR(BaseEstimator, ClassifierMixin):
         # check_is_fitted(self)
 
         if not isinstance(X, torch.DoubleTensor):
-            X = torch.as_tensor(X, dtype=torch.double)
+            X = torch.as_tensor(X, dtype=torch.double).to(self.device_)
 
         n_features = self.coef_.shape[1]
  
@@ -308,7 +313,7 @@ class MLR(BaseEstimator, ClassifierMixin):
         logits = self.decision_function(X)
         _, indices = torch.max(logits.data, 1)
 
-        return self.classes_[indices]
+        return self.classes_[indices.cpu().numpy()]
 
     def predict_proba(self, X):
         """
@@ -333,7 +338,7 @@ class MLR(BaseEstimator, ClassifierMixin):
 
         logits = self.decision_function(X)
 
-        return F.softmax(logits, dim=1).numpy()
+        return F.softmax(logits, dim=1).cpu().numpy()
 
     def predict_log_proba(self, X):
         """
@@ -356,4 +361,4 @@ class MLR(BaseEstimator, ClassifierMixin):
 
         logits = self.decision_function(X)
 
-        return F.log_softmax(logits, dim=1).numpy()
+        return F.log_softmax(logits, dim=1).cpu().numpy()
