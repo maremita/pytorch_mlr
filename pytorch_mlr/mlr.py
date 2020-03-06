@@ -90,8 +90,8 @@ class MLR(BaseEstimator, ClassifierMixin):
         self.model = linear_layer(n_classes, n_features, _bias).to(
                 self.device_)
 
-        # Check penalty type
-        self.check_penalty()
+        # scale alpha by number of samples
+        self.alpha /= n_samples
 
         # Define loss function
         self.cross_entropy_loss = nn.CrossEntropyLoss(
@@ -104,8 +104,8 @@ class MLR(BaseEstimator, ClassifierMixin):
         else:
             raise NotImplementedError("Only SGD solver is supported")
 
-        # scale alpha by number of samples
-        self.alpha /= n_samples
+        # Initialize regularization attributes
+        self.init_regularization()
 
         # Define regularizer
         self.regularizer = self._regularizer()
@@ -177,7 +177,7 @@ class MLR(BaseEstimator, ClassifierMixin):
         
         self.n_iter_ = n_iter
 
-    def check_penalty(self):
+    def init_regularization(self):
         # check penalty type 
         penalty_types = ['none', 'l1', 'l2', 'elasticnet'] 
         
@@ -185,26 +185,23 @@ class MLR(BaseEstimator, ClassifierMixin):
             raise ValueError("Regularization type should be one of these "
                     "values {}; and got {}".format(
                         ", ".join(penalty_types), reg_type))
-        
-        if self.penalty == 'none':
-            self.penalty_type = 0
 
-        elif self.penalty == 'l1':
-            self.penalty_type = 1
-            decay_scale = self.learning_rate*self.l1_ratio*self.alpha 
-            self.decay_scale = torch.tensor(decay_scale).to(
-                    self.device_).detach()
+        if self.penalty == 'l1':
+            self.l1_ratio = 1.
 
         elif self.penalty == 'l2':
-            self.penalty_type = 2
-            decay_scale = self.learning_rate*(1-self.l1_ratio)*self.alpha
-            self.decay_scale = torch.tensor(decay_scale).to(
+            self.l1_ratio = 0.
+
+        if self.penalty in ["l2", "elasticnet"]:
+            l2_decay_scale = self.learning_rate*(1 - self.l1_ratio)*self.alpha
+            self.l2_decay_scale = torch.tensor(l2_decay_scale).to(
                     self.device_).detach()
 
-        elif self.penalty == 'elasticnet':
-            self.penalty_type = 3
-
         if self.penalty in ["l1", "elasticnet"]:
+            l1_decay_scale = self.learning_rate*self.l1_ratio*self.alpha 
+            self.l1_decay_scale = torch.tensor(l1_decay_scale).to(
+                    self.device_).detach()
+
             w = self.model.linear.weight.data
             self.q = torch.zeros_like(w).to(self.device_).detach()
             self.wuq = torch.zeros_like(w).to(self.device_).detach()
@@ -212,16 +209,16 @@ class MLR(BaseEstimator, ClassifierMixin):
 
     def _regularizer(self):
 
-        if self.penalty_type == 0:
+        if self.penalty == "none":
             return lambda : None
 
-        elif self.penalty_type == 1:
+        elif self.penalty == "l1":
             return self._l1
 
-        elif self.penalty_type == 2:
+        elif self.penalty == "l2":
             return self._l2
 
-        elif self.penalty_type == 3:
+        elif self.penalty == "elasticnet":
             return self._elasticnet
 
     def _l1(self):
@@ -231,7 +228,7 @@ class MLR(BaseEstimator, ClassifierMixin):
         w = self.model.linear.weight.data
         z = w.data.clone().to(self.device_).detach()
         lr = self.optimizer.param_groups[0]['lr']
-        self.u += self.decay_scale
+        self.u += self.l1_decay_scale
 
         # w_i > 0
         self.wuq = w - (self.u + self.q)
@@ -251,7 +248,7 @@ class MLR(BaseEstimator, ClassifierMixin):
         self.model.linear.weight.pow(2).sum()
         """
         w = self.model.linear.weight.data
-        w.add_(-self.decay_scale, w)
+        w.add_(-self.l2_decay_scale, w)
 
     def _elasticnet(self):
         """
