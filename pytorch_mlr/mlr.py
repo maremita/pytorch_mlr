@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 from sklearn.base import BaseEstimator, ClassifierMixin
-from sklearn.utils.validation import check_X_y, check_array
+from sklearn.utils.validation import check_X_y
 from sklearn.utils.validation import check_is_fitted
 from sklearn.preprocessing import LabelEncoder
 
@@ -106,6 +106,7 @@ class MLR(BaseEstimator, ClassifierMixin):
 
         # scale alpha by number of samples
         self.alpha /= n_samples
+        self.alpha = torch.tensor(self.alpha).to(self.device_).detach()
 
         # Define regularizer
         self.regularizer = self._regularizer()
@@ -139,9 +140,6 @@ class MLR(BaseEstimator, ClassifierMixin):
 
                 # compute the loss
                 loss = self.cross_entropy_loss(logits, y_batch)
- 
-                # regularization
-                #loss += self.alpha * self.regularizer()
 
                 # compute gradients
                 loss.backward()
@@ -191,24 +189,26 @@ class MLR(BaseEstimator, ClassifierMixin):
         
         if self.penalty == 'none':
             self.penalty_type = 0
-            self.alpha = 0.0
+            self.alpha = torch.tensor(0.).to(self.device_).detach()
 
         elif self.penalty == 'l1':
             self.penalty_type = 1
-            self.l1_ratio = 1.0
+            self.l1_ratio = torch.tensor(1.).to(self.device_).detach()
 
         elif self.penalty == 'l2':
             self.penalty_type = 2
-            self.l1_ratio = 0.0
+            self.l1_ratio = torch.tensor(0.).to(self.device_).detach()
 
         elif self.penalty == 'elasticnet':
             self.penalty_type = 3
-        
+            self.l1_ratio = torch.tensor(self.l1_ratio).to(
+                    self.device_).detach()
+
         if self.penalty in ["l1", "elasticnet"]:
             w = self.model.linear.weight.data
             self.q = torch.zeros_like(w).to(self.device_).detach()
             self.wuq = torch.zeros_like(w).to(self.device_).detach()
-            self.u = 0.
+            self.u =  torch.tensor(0.).to(self.device_).detach()
 
     def _regularizer(self):
 
