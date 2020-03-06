@@ -106,7 +106,6 @@ class MLR(BaseEstimator, ClassifierMixin):
 
         # scale alpha by number of samples
         self.alpha /= n_samples
-        self.alpha = torch.tensor(self.alpha).to(self.device_).detach()
 
         # Define regularizer
         self.regularizer = self._regularizer()
@@ -155,14 +154,14 @@ class MLR(BaseEstimator, ClassifierMixin):
                 #print(loss.item())
                 current_w = self.model.linear.weight
  
-                max_weight = torch.max(self.model.linear.weight.data)
+                max_weight = torch.max(self.model.linear.weight.data).item()
                 max_change = (current_w - previous_w).abs().max().item()
 
                 previous_w.copy_(current_w)
 
-                if ((max_weight != 0 and max_change/max_weight <= self.tol) 
-                        or max_weight == 0 and max_change):
-                    
+                if ((max_weight != 0. and max_change/max_weight <= self.tol) 
+                        or max_weight == 0. and max_change):
+ 
                     if self.verbose:
                         print( "Convergence after {} epochs".format(epoch+1))
 
@@ -189,20 +188,21 @@ class MLR(BaseEstimator, ClassifierMixin):
         
         if self.penalty == 'none':
             self.penalty_type = 0
-            self.alpha = torch.tensor(0.).to(self.device_).detach()
 
         elif self.penalty == 'l1':
             self.penalty_type = 1
-            self.l1_ratio = torch.tensor(1.).to(self.device_).detach()
+            decay_scale = self.learning_rate*self.l1_ratio*self.alpha 
+            self.decay_scale = torch.tensor(decay_scale).to(
+                    self.device_).detach()
 
         elif self.penalty == 'l2':
             self.penalty_type = 2
-            self.l1_ratio = torch.tensor(0.).to(self.device_).detach()
+            decay_scale = self.learning_rate*(1-self.l1_ratio)*self.alpha
+            self.decay_scale = torch.tensor(decay_scale).to(
+                    self.device_).detach()
 
         elif self.penalty == 'elasticnet':
             self.penalty_type = 3
-            self.l1_ratio = torch.tensor(self.l1_ratio).to(
-                    self.device_).detach()
 
         if self.penalty in ["l1", "elasticnet"]:
             w = self.model.linear.weight.data
@@ -231,8 +231,7 @@ class MLR(BaseEstimator, ClassifierMixin):
         w = self.model.linear.weight.data
         z = w.data.clone().to(self.device_).detach()
         lr = self.optimizer.param_groups[0]['lr']
-        decay_scale = lr * self.l1_ratio * self.alpha 
-        self.u += decay_scale
+        self.u += self.decay_scale
 
         # w_i > 0
         self.wuq = w - (self.u + self.q)
@@ -252,9 +251,7 @@ class MLR(BaseEstimator, ClassifierMixin):
         self.model.linear.weight.pow(2).sum()
         """
         w = self.model.linear.weight.data
-        lr = self.optimizer.param_groups[0]['lr']
-        decay_scale = lr * (1 - self.l1_ratio) * self.alpha
-        w.add_(-decay_scale, w)
+        w.add_(-self.decay_scale, w)
 
     def _elasticnet(self):
         """
