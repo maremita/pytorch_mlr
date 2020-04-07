@@ -30,6 +30,26 @@ class linear_layer(nn.Module):
         return self.linear(x)
 
 
+class DataSampler():
+    def __init__(self, X, Y):
+        self.X = X
+        self.Y = Y
+        self.size = X.shape[0]
+        self.indices = [i for i in range(self.size)]
+        np.random.shuffle(self.indices)
+        self.current = 0
+
+    def random_sample(self):
+        ind = self.indices[self.current]
+        self.current += 1
+
+        if self.current == self.size:
+            self.current = 0
+            np.random.shuffle(self.indices)
+
+        return self.X[ind:ind+1], self.Y[ind:ind+1]
+
+
 class MLR(BaseEstimator, ClassifierMixin):
 
     def __init__(self, penalty='l2', tol=1e-4, alpha=1.0, l1_ratio=0., 
@@ -121,16 +141,20 @@ class MLR(BaseEstimator, ClassifierMixin):
 
     def _fit(self, X, y):
         n_iter = 0
+        n_samples = X.shape[0]
 
-        X_y = utils_data.TensorDataset(X, y)
-        X_y_loader = utils_data.DataLoader(X_y, batch_size=self.batch_size,
-                shuffle=True, num_workers=self.n_jobs)
+        #X_y = utils_data.TensorDataset(X, y)
+        #X_y_loader = utils_data.DataLoader(X_y, batch_size=self.batch_size,
+        #        shuffle=True, num_workers=self.n_jobs, pin_memory=True)
+        X_y_loader = DataSampler(X, y)
 
         previous_w = torch.zeros(
                 self.model.linear.weight.shape).to(self.device_).detach()
 
         for epoch in range(self.max_iter):
-            for batch_ind, (X_batch, y_batch) in enumerate(X_y_loader):
+            #for batch_ind, (X_batch, y_batch) in enumerate(X_y_loader):
+            for i in range(n_samples):
+                X_batch, y_batch = X_y_loader.random_sample()
                 # Clear gradients before each batch
                 self.model.zero_grad()
 
@@ -147,7 +171,7 @@ class MLR(BaseEstimator, ClassifierMixin):
                 self.optimizer.step()
 
                 # Regularization (in gradient space)
-                self.regularizer()
+                #self.regularizer()
 
             # Check if the stopping criteria is reached
             with torch.no_grad():
@@ -163,7 +187,7 @@ class MLR(BaseEstimator, ClassifierMixin):
                         or max_weight == 0. and max_change):
  
                     if self.verbose:
-                        print( "Convergence after {} epochs".format(epoch+1))
+                        print("Convergence after {} epochs".format(epoch+1))
 
                     break
                 elif self.verbose == 2:

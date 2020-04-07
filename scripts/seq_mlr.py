@@ -26,9 +26,10 @@ if __name__ == "__main__":
 
     seq_file = sys.argv[1]
     cls_file = sys.argv[2]
-    device = sys.argv[3]   # cpu or cuda or cuda:0
+    reg_penalty = sys.argv[3] # none, l1, l2 or elasticnet
+    device = sys.argv[4]   # cpu or cuda or cuda:0
 
-    k=5
+    k=6
 
     ## Get data
     ###########
@@ -47,7 +48,7 @@ if __name__ == "__main__":
     ###################
 
     #penalty = 'elasticnet'
-    penalty = 'l2'
+    penalty = 'none'
     alpha = 10 * X_train.shape[0]
     l1_ratio = 0.5
     max_iter = 1000
