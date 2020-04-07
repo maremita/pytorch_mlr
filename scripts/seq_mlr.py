@@ -48,7 +48,7 @@ if __name__ == "__main__":
     ###################
 
     #penalty = 'elasticnet'
-    penalty = 'none'
+    penalty = reg_penalty
     alpha = 10 * X_train.shape[0]
     l1_ratio = 0.5
     max_iter = 1000
