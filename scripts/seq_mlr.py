@@ -29,13 +29,13 @@ if __name__ == "__main__":
     reg_penalty = sys.argv[3] # none, l1, l2 or elasticnet
     device = sys.argv[4]   # cpu or cuda or cuda:0
 
-    k=6
+    k=4
 
     ## Get data
     ###########
     seq_data = seq_collections.SeqCollection((seq_file, cls_file))
 
-    seq_cv_kmers = kmers.SeenKmersCollection(seq_data, k=k, sparse="no")
+    seq_cv_kmers = kmers.SeenKmersCollection(seq_data, k=k, dtype=np.int64, sparse=None)
     X = seq_cv_kmers.data
     y = np.asarray(seq_data.labels)
 
