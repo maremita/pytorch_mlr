@@ -29,7 +29,7 @@ if __name__ == "__main__":
     reg_penalty = sys.argv[3] # none, l1, l2 or elasticnet
     device = sys.argv[4]   # cpu or cuda or cuda:0
 
-    k=4
+    k=5
 
     ## Get data
     ###########
@@ -43,7 +43,7 @@ if __name__ == "__main__":
 
     X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.33, shuffle=True, random_state=42)
-   
+ 
     ## Hyper-parameters
     ###################
 
@@ -52,13 +52,15 @@ if __name__ == "__main__":
     alpha = 10 * X_train.shape[0]
     l1_ratio = 0.5
     max_iter = 1000
+ 
     learning_rate = test_sag.get_step_size(X_train, alpha, True, True)
+    print("Learning rate = {}".format(learning_rate))
 
     print("\nTorch MLR with {}".format(penalty))
 
-    pt_mlr = MLR(max_iter=max_iter, penalty=penalty, verbose=1, alpha=alpha,
+    pt_mlr = MLR(max_iter=max_iter, penalty=penalty, verbose=2, alpha=alpha,
             batch_size=1, learning_rate=learning_rate, n_jobs=4, tol=0, 
-            l1_ratio=l1_ratio, device=device)
+            n_iter_no_change=10, l1_ratio=l1_ratio, device=device, random_state=None)
 
     start = time.time()
     pt_mlr.fit(X_train, y_train)

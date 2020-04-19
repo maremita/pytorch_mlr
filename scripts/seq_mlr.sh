@@ -1,3 +1,5 @@
 #!/usr/bin/env bash
 
-seq_mlr.py ~/Projects/Thesis/Data/Inputs/viruses/viruses_dylan/HCV02/data.fa ~/Projects/Thesis/Data/Inputs/viruses/viruses_dylan/HCV02/class.csv none cpu
+VIRUS=HCV02
+
+seq_mlr.py ~/Projects/Thesis/Data/Inputs/viruses/viruses_dylan/$VIRUS/data.fa ~/Projects/Thesis/Data/Inputs/viruses/viruses_dylan/$VIRUS/class.csv l2 cpu

@@ -31,10 +31,14 @@ class linear_layer(nn.Module):
 
 
 class DataSampler():
-    def __init__(self, X, Y):
+    def __init__(self, X, Y, random_state=42):
         self.X = X
         self.Y = Y
+        self.random_state=random_state
         self.size = X.shape[0]
+
+        #
+        np.random.seed(self.random_state)
         self.indices = [i for i in range(self.size)]
         np.random.shuffle(self.indices)
         self.current = 0
@@ -53,9 +57,10 @@ class DataSampler():
 class MLR(BaseEstimator, ClassifierMixin):
 
     def __init__(self, penalty='l2', tol=1e-4, alpha=1.0, l1_ratio=0., 
-            learning_rate=0.001, fit_intercept=True, intercept_scaling=1, 
-            class_weight=None, random_state=None, solver='sgd', max_iter=100,
-            n_jobs=0, batch_size=1, device='cpu', verbose=0):
+            learning_rate=0.001, fit_intercept=True, class_weight=None,
+            random_state=None, solver='sgd', max_iter=100,
+            n_iter_no_change=5, n_jobs=0, batch_size=1, device='cpu',
+            verbose=0):
 
         self.penalty = penalty
         self.tol = tol
@@ -63,11 +68,11 @@ class MLR(BaseEstimator, ClassifierMixin):
         self.l1_ratio = l1_ratio
         self.learning_rate=learning_rate
         self.fit_intercept = fit_intercept
-        self.intercept_scaling = intercept_scaling
         self.class_weight = class_weight
         self.random_state = random_state
         self.solver = solver
         self.max_iter = max_iter
+        self.n_iter_no_change = n_iter_no_change
         self.n_jobs = n_jobs
         self.batch_size = batch_size
         self.device = device
@@ -123,7 +128,7 @@ class MLR(BaseEstimator, ClassifierMixin):
                     lr=self.learning_rate, weight_decay=0)
         else:
             raise NotImplementedError("Only SGD solver is supported")
-
+ 
         # Initialize regularization attributes
         self.init_regularization()
 
@@ -142,17 +147,14 @@ class MLR(BaseEstimator, ClassifierMixin):
     def _fit(self, X, y):
         n_iter = 0
         n_samples = X.shape[0]
-
-        #X_y = utils_data.TensorDataset(X, y)
-        #X_y_loader = utils_data.DataLoader(X_y, batch_size=self.batch_size,
-        #        shuffle=True, num_workers=self.n_jobs, pin_memory=True)
-        X_y_loader = DataSampler(X, y)
-
-        previous_w = torch.zeros(
-                self.model.linear.weight.shape).to(self.device_).detach()
+        best_loss = np.inf
+        no_improvement_count = 0
+        
+        X_y_loader = DataSampler(X, y, random_state=self.random_state)
 
         for epoch in range(self.max_iter):
-            #for batch_ind, (X_batch, y_batch) in enumerate(X_y_loader):
+            sum_loss = 0.0
+
             for i in range(n_samples):
                 X_batch, y_batch = X_y_loader.random_sample()
                 # Clear gradients before each batch
@@ -166,39 +168,43 @@ class MLR(BaseEstimator, ClassifierMixin):
 
                 # compute gradients
                 loss.backward()
+                sum_loss += loss.item()
 
                 # update parameters
                 self.optimizer.step()
 
                 # Regularization (in gradient space)
-                #self.regularizer()
+                self.regularizer()
 
             # Check if the stopping criteria is reached
             with torch.no_grad():
-                #print(loss.item())
-                current_w = self.model.linear.weight
- 
-                max_weight = torch.max(self.model.linear.weight.data).item()
-                max_change = (current_w - previous_w).abs().max().item()
+                # This stopping creteria is takken from SGD scikit-learn
+                # implementation
 
-                previous_w.copy_(current_w)
+                if self.tol > -np.inf and sum_loss > best_loss - self.tol * n_samples:
+                    no_improvement_count += 1
 
-                if ((max_weight != 0. and max_change/max_weight <= self.tol) 
-                        or max_weight == 0. and max_change):
- 
+                else:
+                    no_improvement_count = 0
+
+                if sum_loss < best_loss:
+                    best_loss = sum_loss
+
+                if no_improvement_count >= self.n_iter_no_change:
+
                     if self.verbose:
-                        print("Convergence after {} epochs".format(epoch+1))
-
+                        print("\nConvergence after {} epochs".format(epoch+1))
                     break
+
                 elif self.verbose == 2:
-                    print("Epoch {}, change {}".format(epoch+1,
-                        max_change/max_weight))
+                    print("Epoch {}\tsum_loss {}\tbest_loss {}\tno_improve_count {}".format(
+                        epoch+1, sum_loss, best_loss, no_improvement_count))
 
             n_iter +=1
 
         if self.verbose and n_iter >= self.max_iter:
-            print("max_iter reached")
-        
+            print("max_iter {} is reached".format(n_iter))
+
         self.n_iter_ = n_iter
 
     def init_regularization(self):
