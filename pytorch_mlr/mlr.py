@@ -149,7 +149,7 @@ class MLR(BaseEstimator, ClassifierMixin):
         n_samples = X.shape[0]
         best_loss = np.inf
         no_improvement_count = 0
-        
+ 
         X_y_loader = DataSampler(X, y, random_state=self.random_state)
 
         for epoch in range(self.max_iter):
@@ -205,12 +205,13 @@ class MLR(BaseEstimator, ClassifierMixin):
         if self.verbose and n_iter >= self.max_iter:
             print("max_iter {} is reached".format(n_iter))
 
+        self.sum_loss_ = sum_loss
         self.n_iter_ = n_iter
 
     def init_regularization(self):
         # check penalty type 
-        penalty_types = ['none', 'l1', 'l2', 'elasticnet'] 
-        
+        penalty_types = ['none', 'l1', 'l2', 'elasticnet']
+ 
         if self.penalty not in penalty_types:
             raise ValueError("Regularization type should be one of these "
                     "values {}; and got {}".format(
