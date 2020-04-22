@@ -9,6 +9,7 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.utils.validation import check_X_y
 from sklearn.utils.validation import check_is_fitted
 from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import f1_score
 
 from torch.utils import data as utils_data
 
@@ -88,8 +89,8 @@ class MLR(BaseEstimator, ClassifierMixin):
         # Check that X and y have correct shape
         X, y = check_X_y(X, y)
  
-        le = LabelEncoder()
-        encoded_y = le.fit_transform(y).astype(np.long, copy=False)
+        self.y_encoder = LabelEncoder()
+        encoded_y = self.y_encoder.fit_transform(y).astype(np.long, copy=False)
 
         X = torch.from_numpy(X).double().to(self.device_)
         encoded_y = torch.from_numpy(encoded_y).long().to(self.device_)
@@ -197,8 +198,12 @@ class MLR(BaseEstimator, ClassifierMixin):
                     break
 
                 elif self.verbose == 2:
-                    print("Epoch {}\tsum_loss {}\tbest_loss {}\tno_improve_count {}".format(
-                        epoch+1, sum_loss, best_loss, no_improvement_count))
+                    # predict training labels
+                    y_pred = self.predict(X)
+                    score = f1_score(self.y_encoder.inverse_transform(y), y_pred, average="weighted")
+
+                    print("Epoch {}\tsum_loss {}\tbest_loss {}\tno_improve_count {}\tf1_score {}".format(
+                        epoch+1, sum_loss, best_loss, no_improvement_count, score))
 
             n_iter +=1
 
@@ -309,8 +314,8 @@ class MLR(BaseEstimator, ClassifierMixin):
         if not isinstance(X, torch.DoubleTensor):
             X = torch.as_tensor(X, dtype=torch.double).to(self.device_)
 
-        n_features = self.coef_.shape[1]
- 
+        n_features = self.model.linear.weight.data.shape[1]
+
         if X.shape[1] != n_features:
             raise ValueError("X has %d features per sample; expecting %d" 
                     % (X.shape[1], n_features))
