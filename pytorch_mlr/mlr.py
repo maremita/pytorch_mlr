@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 
 import torch
@@ -9,6 +10,7 @@ from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.utils.validation import check_X_y
 from sklearn.utils.validation import check_is_fitted
 from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.metrics import f1_score
 
 from torch.utils import data as utils_data
@@ -37,7 +39,6 @@ class DataSampler():
         self.Y = Y
         self.random_state=random_state
         self.size = X.shape[0]
-
         #
         np.random.seed(self.random_state)
         self.indices = [i for i in range(self.size)]
@@ -59,7 +60,7 @@ class MLR(BaseEstimator, ClassifierMixin):
 
     def __init__(self, penalty='l2', tol=1e-4, alpha=1.0, l1_ratio=0., 
             learning_rate=0.001, fit_intercept=True, class_weight=None,
-            random_state=None, solver='sgd', max_iter=100,
+            random_state=None, solver='sgd', max_iter=100, validation=False,
             n_iter_no_change=5, n_jobs=0, batch_size=1, device='cpu',
             verbose=0):
 
@@ -73,6 +74,7 @@ class MLR(BaseEstimator, ClassifierMixin):
         self.random_state = random_state
         self.solver = solver
         self.max_iter = max_iter
+        self.validation = validation
         self.n_iter_no_change = n_iter_no_change
         self.n_jobs = n_jobs
         self.batch_size = batch_size
@@ -85,6 +87,9 @@ class MLR(BaseEstimator, ClassifierMixin):
  
         if self.device_.type == "cuda":
             self.n_jobs = 0
+        
+        # TODO
+        # Check validation value
 
         # Check that X and y have correct shape
         X, y = check_X_y(X, y)
@@ -94,7 +99,7 @@ class MLR(BaseEstimator, ClassifierMixin):
 
         X = torch.from_numpy(X).double().to(self.device_)
         encoded_y = torch.from_numpy(encoded_y).long().to(self.device_)
-        
+
         # Store the classes seen during fit
         self.classes_ = np.unique(y)
 
@@ -108,7 +113,8 @@ class MLR(BaseEstimator, ClassifierMixin):
 
         # Check fit_intercept (True or False)
         _bias = self.fit_intercept 
-
+ 
+        # TODO
         # Check self.class_weight
         # It has to be a Tensor
  
@@ -150,11 +156,28 @@ class MLR(BaseEstimator, ClassifierMixin):
         n_samples = X.shape[0]
         best_loss = np.inf
         no_improvement_count = 0
- 
-        X_y_loader = DataSampler(X, y, random_state=self.random_state)
+
+        if self.validation:
+            sss = StratifiedShuffleSplit(n_splits=1, test_size=self.validation)
+            train_ind, val_ind = next(sss.split(np.zeros(n_samples), y))
+
+            X_train = X[train_ind]
+            y_train = y[train_ind]
+            
+            X_val = X[val_ind]
+            y_val = y[val_ind]
+
+            X_y_loader = DataSampler(X_train, y_train, random_state=self.random_state)
+
+            n_samples = X_train.shape[0]
+            n_val_samples = X_val.shape[0] 
+        
+        else:
+            X_y_loader = DataSampler(X, y, random_state=self.random_state)
 
         for epoch in range(self.max_iter):
-            sum_loss = 0.0
+            train_loss = 0.0
+            val_loss = None
 
             for i in range(n_samples):
                 X_batch, y_batch = X_y_loader.random_sample()
@@ -169,7 +192,7 @@ class MLR(BaseEstimator, ClassifierMixin):
 
                 # compute gradients
                 loss.backward()
-                sum_loss += loss.item()
+                train_loss += loss.item()
 
                 # update parameters
                 self.optimizer.step()
@@ -182,14 +205,28 @@ class MLR(BaseEstimator, ClassifierMixin):
                 # This stopping creteria is takken from SGD scikit-learn
                 # implementation
 
-                if self.tol > -np.inf and sum_loss > best_loss - self.tol * n_samples:
-                    no_improvement_count += 1
+                if self.validation:
+                    val_logits = self.model(X_val)
+                    val_loss = self.cross_entropy_loss(val_logits, y_val)
 
+                    if self.tol > -np.inf and val_loss > best_loss - self.tol * n_val_samples:
+                        no_improvement_count += 1
+
+                    else:
+                        no_improvement_count = 0
+
+                    if val_loss < best_loss:
+                        best_loss = val_loss
+ 
                 else:
-                    no_improvement_count = 0
+                    if self.tol > -np.inf and train_loss > best_loss - self.tol * n_samples:
+                        no_improvement_count += 1
 
-                if sum_loss < best_loss:
-                    best_loss = sum_loss
+                    else:
+                        no_improvement_count = 0
+
+                    if train_loss < best_loss:
+                        best_loss = train_loss
 
                 if no_improvement_count >= self.n_iter_no_change:
 
@@ -197,20 +234,22 @@ class MLR(BaseEstimator, ClassifierMixin):
                         print("\nConvergence after {} epochs".format(epoch+1))
                     break
 
+
                 elif self.verbose == 2:
                     # predict training labels
                     y_pred = self.predict(X)
                     score = f1_score(self.y_encoder.inverse_transform(y), y_pred, average="weighted")
 
-                    print("Epoch {}\tsum_loss {}\tbest_loss {}\tno_improve_count {}\tf1_score {}".format(
-                        epoch+1, sum_loss, best_loss, no_improvement_count, score))
+                    print("Epoch {}\ttrain_loss {}\tval_loss {}\t"\
+                            "best_loss {}\tno_improve_count {}\tf1_score {}".format(
+                                epoch+1, train_loss, val_loss,  best_loss, no_improvement_count, score))
 
             n_iter +=1
 
         if self.verbose and n_iter >= self.max_iter:
             print("max_iter {} is reached".format(n_iter))
 
-        self.sum_loss_ = sum_loss
+        self.train_loss_ = train_loss
         self.n_iter_ = n_iter
 
     def init_regularization(self):
