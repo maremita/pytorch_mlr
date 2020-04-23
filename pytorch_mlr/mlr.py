@@ -62,7 +62,7 @@ class MLR(BaseEstimator, ClassifierMixin):
             learning_rate=0.001, fit_intercept=True, class_weight=None,
             random_state=None, solver='sgd', max_iter=100, validation=False,
             n_iter_no_change=5, n_jobs=0, batch_size=1, device='cpu',
-            verbose=0):
+            keep_losses=False, verbose=0):
 
         self.penalty = penalty
         self.tol = tol
@@ -79,6 +79,7 @@ class MLR(BaseEstimator, ClassifierMixin):
         self.n_jobs = n_jobs
         self.batch_size = batch_size
         self.device = device
+        self.keep_losses = keep_losses
         self.verbose = verbose
 
     def fit(self, X, y):
@@ -126,8 +127,8 @@ class MLR(BaseEstimator, ClassifierMixin):
         self.alpha /= n_samples
 
         # Define loss function
-        self.cross_entropy_loss = nn.CrossEntropyLoss(
-                weight=self.class_weight) 
+        self.cross_entropy_loss = nn.CrossEntropyLoss(reduction="mean",
+                weight=self.class_weight)
 
         # Define optimizer
         if self.solver == "sgd":
@@ -157,21 +158,23 @@ class MLR(BaseEstimator, ClassifierMixin):
         best_loss = np.inf
         no_improvement_count = 0
 
+        if self.keep_losses: self.train_losses_ = []
         if self.validation:
             sss = StratifiedShuffleSplit(n_splits=1, test_size=self.validation)
             train_ind, val_ind = next(sss.split(np.zeros(n_samples), y))
 
             X_train = X[train_ind]
-            y_train = y[train_ind]
-            
+            y_train = y[train_ind] 
             X_val = X[val_ind]
             y_val = y[val_ind]
 
             X_y_loader = DataSampler(X_train, y_train, random_state=self.random_state)
 
             n_samples = X_train.shape[0]
-            n_val_samples = X_val.shape[0] 
-        
+            n_val_samples = X_val.shape[0]
+
+            if self.keep_losses: self.val_losses_ = []
+ 
         else:
             X_y_loader = DataSampler(X, y, random_state=self.random_state)
 
@@ -202,31 +205,35 @@ class MLR(BaseEstimator, ClassifierMixin):
 
             # Check if the stopping criteria is reached
             with torch.no_grad():
-                # This stopping creteria is takken from SGD scikit-learn
+                # This stopping creteria is adapted from SGD scikit-learn
                 # implementation
+                
+                train_loss /= n_samples
+                if self.keep_losses: self.train_losses_.append(train_loss)
 
                 if self.validation:
                     val_logits = self.model(X_val)
                     val_loss = self.cross_entropy_loss(val_logits, y_val)
 
-                    if self.tol > -np.inf and val_loss > best_loss - self.tol * n_val_samples:
+                    if self.tol > -np.inf and val_loss > best_loss - self.tol:
                         no_improvement_count += 1
-
                     else:
                         no_improvement_count = 0
 
                     if val_loss < best_loss:
                         best_loss = val_loss
+
+                    if self.keep_losses: self.val_losses_.append(val_loss)
  
                 else:
-                    if self.tol > -np.inf and train_loss > best_loss - self.tol * n_samples:
+                    if self.tol > -np.inf and train_loss > best_loss - self.tol:
                         no_improvement_count += 1
-
                     else:
                         no_improvement_count = 0
 
                     if train_loss < best_loss:
                         best_loss = train_loss
+
 
                 if no_improvement_count >= self.n_iter_no_change:
 
@@ -248,6 +255,8 @@ class MLR(BaseEstimator, ClassifierMixin):
 
         if self.verbose and n_iter >= self.max_iter:
             print("max_iter {} is reached".format(n_iter))
+
+        print("n_samples {}\tn_val_samples {} ".format(n_samples, n_val_samples))
 
         self.train_loss_ = train_loss
         self.n_iter_ = n_iter

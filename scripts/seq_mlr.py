@@ -16,11 +16,23 @@ from sklearn.metrics import classification_report
 from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model.tests import test_sag
 
-#import torch
-
+from matplotlib import pyplot as plt
 
 __author__ = "amine"
 
+
+def plot_losses(losses):
+
+    plt.figure(figsize=(10,5))
+    #plt.title("")
+
+    for loss in losses:
+        plt.plot(loss["loss"],label=loss["label"])
+
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.show()
 
 if __name__ == "__main__":
 
@@ -52,6 +64,8 @@ if __name__ == "__main__":
     alpha = 1 * X_train.shape[0]
     l1_ratio = 0.5
     max_iter = 1000
+    val_ratio = 0.3
+    save_losses = True
 
     learning_rate = test_sag.get_step_size(X_train, alpha, True, True)
     print("Learning rate = {}".format(learning_rate))
@@ -60,9 +74,9 @@ if __name__ == "__main__":
 
     pt_mlr = MLR(max_iter=max_iter, penalty=penalty, alpha=alpha,
             batch_size=1, learning_rate=learning_rate, n_jobs=4,
-            tol=0, validation=0.3, n_iter_no_change=50,
+            tol=0, validation=val_ratio, n_iter_no_change=50,
             l1_ratio=l1_ratio, device=device, random_state=None,
-            verbose=1)
+            keep_losses=save_losses, verbose=1)
 
     start = time.time()
     pt_mlr.fit(X_train, y_train)
@@ -73,19 +87,27 @@ if __name__ == "__main__":
     pt_score = classification_report(y_test, y_pred)
     print("\nPytorch_mlr scores:\n {}\n".format(pt_score))
 
-    print("\nScikit MLR with {}".format(penalty))
+    if save_losses:
+        losses = []
+        losses.append({"loss":pt_mlr.train_losses_, "label":"train loss"})
+        if val_ratio:
+            losses.append({"loss":pt_mlr.val_losses_, "label":"validation loss"})   
+        
+        plot_losses(losses)
 
-    sk_mlr = LogisticRegression(multi_class="multinomial", 
-            max_iter=max_iter, solver="saga", tol=1e-10, penalty=penalty,
-            C=1./alpha, l1_ratio=l1_ratio)
+   # print("\nScikit MLR with {}".format(penalty))
 
-    start = time.time()
-    sk_mlr.fit(X_train, y_train)
-    end = time.time()
-    print("Fit time: {}".format(end - start))
+   # sk_mlr = LogisticRegression(multi_class="multinomial", 
+   #         max_iter=max_iter, solver="saga", tol=1e-10, penalty=penalty,
+   #         C=1./alpha, l1_ratio=l1_ratio)
 
-    y_pred = sk_mlr.predict(X_test)
-    sk_score = classification_report(y_test, y_pred)
+   # start = time.time()
+   # sk_mlr.fit(X_train, y_train)
+   # end = time.time()
+   # print("Fit time: {}".format(end - start))
 
-    print("\nScikit_mlr scores:\n {}".format(sk_score))
+   # y_pred = sk_mlr.predict(X_test)
+   # sk_score = classification_report(y_test, y_pred)
+
+   # print("\nScikit_mlr scores:\n {}".format(sk_score))
 
