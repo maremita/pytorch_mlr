@@ -21,7 +21,7 @@ from matplotlib import pyplot as plt
 __author__ = "amine"
 
 
-def plot_losses(losses):
+def plot_losses(losses, fig_file):
 
     plt.figure(figsize=(10,5))
     #plt.title("")
@@ -32,7 +32,8 @@ def plot_losses(losses):
     plt.xlabel("Epochs")
     plt.ylabel("Loss")
     plt.legend()
-    plt.show()
+    #plt.show()
+    plt.savefig(fig_file, bbox_inches="tight")
 
 if __name__ == "__main__":
 
@@ -92,22 +93,22 @@ if __name__ == "__main__":
         losses.append({"loss":pt_mlr.train_losses_, "label":"train loss"})
         if val_ratio:
             losses.append({"loss":pt_mlr.val_losses_, "label":"validation loss"})   
-        
-        plot_losses(losses)
+ 
+        plot_losses(losses, "mlr_figure.png")
 
-   # print("\nScikit MLR with {}".format(penalty))
+    print("\nScikit MLR with {}".format(penalty))
 
-   # sk_mlr = LogisticRegression(multi_class="multinomial", 
-   #         max_iter=max_iter, solver="saga", tol=1e-10, penalty=penalty,
-   #         C=1./alpha, l1_ratio=l1_ratio)
+    sk_mlr = LogisticRegression(multi_class="multinomial", 
+            max_iter=max_iter, solver="saga", tol=1e-10, penalty=penalty,
+            C=1./alpha, l1_ratio=l1_ratio)
 
-   # start = time.time()
-   # sk_mlr.fit(X_train, y_train)
-   # end = time.time()
-   # print("Fit time: {}".format(end - start))
+    start = time.time()
+    sk_mlr.fit(X_train, y_train)
+    end = time.time()
+    print("Fit time: {}".format(end - start))
 
-   # y_pred = sk_mlr.predict(X_test)
-   # sk_score = classification_report(y_test, y_pred)
+    y_pred = sk_mlr.predict(X_test)
+    sk_score = classification_report(y_test, y_pred)
 
-   # print("\nScikit_mlr scores:\n {}".format(sk_score))
+    print("\nScikit_mlr scores:\n {}".format(sk_score))
 
