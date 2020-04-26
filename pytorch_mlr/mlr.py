@@ -14,6 +14,7 @@ from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.metrics import f1_score
 
 from torch.utils import data as utils_data
+import time
 
 
 class linear_layer(nn.Module):
@@ -22,7 +23,7 @@ class linear_layer(nn.Module):
         super(linear_layer, self).__init__()
 
         # to check dtype dependently to input data
-        self.linear = nn.Linear(n_features, n_classes, bias=bias).double()
+        self.linear = nn.Linear(n_features, n_classes, bias=bias).float()
 
         with torch.no_grad():
             self.linear.weight.zero_()
@@ -92,13 +93,13 @@ class MLR(BaseEstimator, ClassifierMixin):
         # TODO
         # Check validation value
 
-        # Check that X and y have correct shape
-        X, y = check_X_y(X, y)
- 
         self.y_encoder = LabelEncoder()
         encoded_y = self.y_encoder.fit_transform(y).astype(np.long, copy=False)
 
-        X = torch.from_numpy(X).double().to(self.device_)
+        if not isinstance(X, torch.FloatTensor):
+            X = torch.from_numpy(X).float()
+
+        X = X.to(self.device_)
         encoded_y = torch.from_numpy(encoded_y).long().to(self.device_)
 
         # Store the classes seen during fit
@@ -158,16 +159,18 @@ class MLR(BaseEstimator, ClassifierMixin):
         best_loss = np.inf
         no_improvement_count = 0
 
+        print(X.device, flush=True)
+
         if self.keep_losses: self.train_losses_ = []
         if self.validation:
             sss = StratifiedShuffleSplit(n_splits=1, test_size=self.validation)
-            train_ind, val_ind = next(sss.split(np.zeros(n_samples), y))
+            train_ind, val_ind = next(sss.split(np.zeros(n_samples), y.cpu().numpy()))
 
             X_train = X[train_ind]
             y_train = y[train_ind] 
             X_val = X[val_ind]
             y_val = y[val_ind]
-
+            print(X_train.device, flush=True)
             X_y_loader = DataSampler(X_train, y_train, random_state=self.random_state)
 
             n_samples = X_train.shape[0]
@@ -178,8 +181,9 @@ class MLR(BaseEstimator, ClassifierMixin):
         else:
             X_y_loader = DataSampler(X, y, random_state=self.random_state)
 
+        start = time.time()
         for epoch in range(self.max_iter):
-            train_loss = 0.0
+            train_loss = torch.tensor(0.0).to(self.device_).detach()
             val_loss = None
 
             for i in range(n_samples):
@@ -195,7 +199,7 @@ class MLR(BaseEstimator, ClassifierMixin):
 
                 # compute gradients
                 loss.backward()
-                train_loss += loss.item()
+                train_loss += loss
 
                 # update parameters
                 self.optimizer.step()
@@ -234,13 +238,11 @@ class MLR(BaseEstimator, ClassifierMixin):
                     if train_loss < best_loss:
                         best_loss = train_loss
 
-
                 if no_improvement_count >= self.n_iter_no_change:
 
                     if self.verbose:
-                        print("\nConvergence after {} epochs".format(epoch+1))
+                        print("\nConvergence after {} epochs".format(epoch+1), flush=True)
                     break
-
 
                 elif self.verbose == 2:
                     # predict training labels
@@ -249,15 +251,16 @@ class MLR(BaseEstimator, ClassifierMixin):
 
                     print("Epoch {}\ttrain_loss {}\tval_loss {}\t"\
                             "best_loss {}\tno_improve_count {}\tf1_score {}".format(
-                                epoch+1, train_loss, val_loss,  best_loss, no_improvement_count, score))
+                                epoch+1, train_loss, val_loss,  best_loss, no_improvement_count, score), flush=True)
 
             n_iter +=1
 
+        end = time.time()
+
         if self.verbose and n_iter >= self.max_iter:
-            print("max_iter {} is reached".format(n_iter))
+            print("max_iter {} is reached".format(n_iter), flush=True)
 
-        print("n_samples {}\tn_val_samples {} ".format(n_samples, n_val_samples))
-
+        self.fit_time_ = end - start
         self.train_loss_ = train_loss
         self.n_iter_ = n_iter
 
@@ -359,8 +362,10 @@ class MLR(BaseEstimator, ClassifierMixin):
 
         # check_is_fitted(self)
 
-        if not isinstance(X, torch.DoubleTensor):
-            X = torch.as_tensor(X, dtype=torch.double).to(self.device_)
+        if not isinstance(X, torch.FloatTensor):
+            X = torch.as_tensor(X, dtype=torch.float)
+
+        X = X.to(self.device_)
 
         n_features = self.model.linear.weight.data.shape[1]
 
