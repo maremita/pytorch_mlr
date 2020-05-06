@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from pytorch_mlr.mlr import MLR
+from pytorch_mlr.pytorch_mlr import MLR
 from pytorch_mlr import seq_collections
 from pytorch_mlr import kmer_collections as kmers
 
@@ -75,7 +75,7 @@ if __name__ == "__main__":
     print("\nTorch MLR with {}".format(penalty), flush=True)
 
     pt_mlr = MLR(max_iter=max_iter, penalty=penalty, alpha=alpha,
-            batch_size=1, learning_rate=learning_rate, n_jobs=4,
+            learning_rate=learning_rate, n_jobs=4,
             tol=0, validation=val_ratio, n_iter_no_change=max_iter,
             l1_ratio=l1_ratio, device=device, random_state=None,
             keep_losses=save_losses, verbose=1)
@@ -95,21 +95,21 @@ if __name__ == "__main__":
         if val_ratio:
             losses.append({"loss":pt_mlr.val_losses_, "label":"validation loss"})   
  
-        plot_losses(losses, "mlr_figure.png")
+        plot_losses(losses, "mlr_{}.png".format(penalty))
 
-    print("\nScikit MLR with {}".format(penalty), flush=True)
+    #print("\nScikit MLR with {}".format(penalty), flush=True)
 
-    sk_mlr = LogisticRegression(multi_class="multinomial", 
-            max_iter=max_iter, solver="saga", tol=1e-10, penalty=penalty,
-            C=1./alpha, l1_ratio=l1_ratio)
+    #sk_mlr = LogisticRegression(multi_class="multinomial", 
+    #        max_iter=max_iter, solver="saga", tol=1e-10, penalty=penalty,
+    #        C=1./alpha, l1_ratio=l1_ratio)
 
-    start = time.time()
-    sk_mlr.fit(X_train, y_train)
-    end = time.time()
-    print("Fit time: {}".format(end - start), flush=True)
+    #start = time.time()
+    #sk_mlr.fit(X_train, y_train)
+    #end = time.time()
+    #print("Fit time: {}".format(end - start), flush=True)
 
-    y_pred = sk_mlr.predict(X_test)
-    sk_score = classification_report(y_test, y_pred)
+    #y_pred = sk_mlr.predict(X_test)
+    #sk_score = classification_report(y_test, y_pred)
 
-    print("\nScikit_mlr scores:\n {}".format(sk_score), flush=True)
+    #print("\nScikit_mlr scores:\n {}".format(sk_score), flush=True)
 
