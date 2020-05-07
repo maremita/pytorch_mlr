@@ -63,9 +63,9 @@ if __name__ == "__main__":
 
     #penalty = 'elasticnet'
     penalty = reg_penalty
-    alpha = 1 * X_train.shape[0]
+    alpha = 1
     l1_ratio = 0.5
-    max_iter = 1000
+    max_iter = 100
     val_ratio = 0
     save_losses = True
 
@@ -75,10 +75,9 @@ if __name__ == "__main__":
     print("\nTorch MLR with {}".format(penalty), flush=True)
 
     pt_mlr = MLR(max_iter=max_iter, penalty=penalty, alpha=alpha,
-            learning_rate=learning_rate, n_jobs=4,
-            tol=0, validation=val_ratio, n_iter_no_change=max_iter,
-            l1_ratio=l1_ratio, device=device, random_state=None,
-            keep_losses=save_losses, verbose=1)
+            learning_rate=learning_rate, tol=0, validation=val_ratio,
+            n_iter_no_change=max_iter, l1_ratio=l1_ratio, device=device,
+            random_state=None, keep_losses=save_losses, verbose=2)
 
     start = time.time()
     pt_mlr.fit(X_train, y_train)
@@ -97,19 +96,19 @@ if __name__ == "__main__":
  
         plot_losses(losses, "mlr_{}.png".format(penalty))
 
-    #print("\nScikit MLR with {}".format(penalty), flush=True)
+    print("\nScikit MLR with {}".format(penalty), flush=True)
 
-    #sk_mlr = LogisticRegression(multi_class="multinomial", 
-    #        max_iter=max_iter, solver="saga", tol=1e-10, penalty=penalty,
-    #        C=1./alpha, l1_ratio=l1_ratio)
+    sk_mlr = LogisticRegression(multi_class="multinomial", 
+            max_iter=max_iter, solver="saga", tol=1e-10, penalty=penalty,
+            C=1./alpha, l1_ratio=l1_ratio)
 
-    #start = time.time()
-    #sk_mlr.fit(X_train, y_train)
-    #end = time.time()
-    #print("Fit time: {}".format(end - start), flush=True)
+    start = time.time()
+    sk_mlr.fit(X_train, y_train)
+    end = time.time()
+    print("Fit time: {}".format(end - start), flush=True)
 
-    #y_pred = sk_mlr.predict(X_test)
-    #sk_score = classification_report(y_test, y_pred)
+    y_pred = sk_mlr.predict(X_test)
+    sk_score = classification_report(y_test, y_pred)
 
-    #print("\nScikit_mlr scores:\n {}".format(sk_score), flush=True)
+    print("\nScikit_mlr scores:\n {}".format(sk_score), flush=True)
 
