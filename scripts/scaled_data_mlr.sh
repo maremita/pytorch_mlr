@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
 
-VIRUS=HIV02
+VIRUS=HCV02
 
-./scaled_data_mlr.py ~/Projects/Thesis/Data/Inputs/viruses/viruses_dylan/$VIRUS/data.fa ~/Projects/Thesis/Data/Inputs/viruses/viruses_dylan/$VIRUS/class.csv 4 l1 cpu
+./scaled_data_mlr.py ../data/viruses/$VIRUS/data.fa ../data/viruses/$VIRUS/class.csv 4 l2 cpu

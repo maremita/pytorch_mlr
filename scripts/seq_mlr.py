@@ -77,7 +77,7 @@ if __name__ == "__main__":
     pt_mlr = MLR(max_iter=max_iter, penalty=penalty, alpha=alpha,
             learning_rate=learning_rate, tol=0, validation=val_ratio,
             n_iter_no_change=max_iter, l1_ratio=l1_ratio, device=device,
-            random_state=None, keep_losses=save_losses, verbose=2)
+            random_state=None, keep_losses=save_losses, verbose=1)
 
     start = time.time()
     pt_mlr.fit(X_train, y_train)

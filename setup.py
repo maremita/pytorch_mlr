@@ -16,6 +16,6 @@ setup(
     author='remita',
     author_email='amine.m.remita@gmail.com',
     packages=find_packages(),
-    scripts=['scripts/seq_mlr.py', 'scripts/seq_mlr.sh'],
+    #scripts=['scripts/seq_mlr.py'],
     install_requires=INSTALL_REQUIRES
 )
